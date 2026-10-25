@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CiteNest — Citation & Reference Management System</title>
+  <meta name="description" content="Production-ready academic citation and reference management platform with integrated paper editor, automatic citation generator, and dynamic bibliography compiler.">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366F1'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Navigation Bar -->
+    <header class="navbar" id="main-navbar">
+      <div class="nav-brand" id="brand-logo" onclick="appState.navigateTo('dashboard')">
+        <div class="brand-icon">🪶</div>
+        <span>CiteNest</span>
+      </div>
+
+      <nav class="nav-links" id="navbar-links" style="display: none;">
+        <button type="button" class="nav-link active" id="nav-dashboard" onclick="appState.navigateTo('dashboard')">
+          <span>📊</span> Dashboard
+        </button>
+        <button type="button" class="nav-link" id="nav-references" onclick="appState.navigateTo('references')">
+          <span>📚</span> Library
+        </button>
+        <button type="button" class="nav-link" id="nav-collections" onclick="appState.navigateTo('collections')">
+          <span>📁</span> Collections
+        </button>
+        <button type="button" class="nav-link" id="nav-editor" onclick="appState.navigateTo('editor')">
+          <span>📝</span> Paper Editor
+        </button>
+        <button type="button" class="nav-link" id="nav-admin" style="display: none;" onclick="appState.navigateTo('admin')">
+          <span>🛡️</span> Admin Portal
+        </button>
+      </nav>
+
+      <div class="nav-actions">
+        <!-- Global Reset Demo Button -->
+        <button type="button" class="btn btn-demo" id="btn-global-reset-demo" onclick="appState.resetDemoData()" title="Reset to standard Lab 4 Object Diagram / Annex F data">
+          <span>🔄</span> Reset Demo Data
+        </button>
+
+        <div class="user-badge" id="user-profile-badge" style="display: none;">
+          <div class="user-avatar" id="user-avatar-initial">U</div>
+          <div style="text-align: left; line-height: 1.2;">
+            <div id="user-display-name" style="font-weight: 600;">User</div>
+            <span class="badge" id="user-role-badge">Role</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline" id="btn-logout" onclick="appState.logout()" title="Sign out of CiteNest" style="margin-left: 0.5rem;">
+            Logout
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Dynamic Content Views -->
+    <main class="main-container">
+
+      <!-- ==============================================================
+           1. AUTH VIEW (LOGIN & REGISTRATION + 1-CLICK DEMO ACCOUNTS)
+           ============================================================== -->
+      <section id="view-auth" class="auth-section" style="max-width: 520px; margin: 3rem auto;">
+        <!-- Demo Accounts Quick Switcher Bar -->
+        <div class="demo-bar" style="margin-bottom: 2rem;">
+          <div style="font-size: 0.85rem; font-weight: 600; color: #C4B5FD;">
+            ⚡ Quick 1-Click Demo Accounts (Lab 4 Verification):
+          </div>
+          <div class="demo-pills" style="margin-top: 0.5rem; width: 100%;">
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-demo-aaryan" onclick="appState.quickLogin('aaryan@lnmiit.ac.in', 'password123')">
+              👨‍🎓 Aaryan (Student)
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-demo-earth" onclick="appState.quickLogin('earth@lnmiit.ac.in', 'password123')">
+              🔬 Earth (Researcher)
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-demo-admin" onclick="appState.quickLogin('admin@lnmiit.ac.in', 'admin123')">
+              👑 Adeshwar (Admin)
+            </button>
+          </div>
+        </div>
+
+        <div class="card" style="box-shadow: var(--shadow-lg);">
+          <div style="text-align: center; margin-bottom: 1.75rem;">
+            <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">🪶</div>
+            <h1 class="page-title" style="font-size: 1.6rem;">Welcome to CiteNest</h1>
+            <p class="page-subtitle">Academic Citation & Reference Management System</p>
+          </div>
+
+          <!-- Auth Tab Switcher -->
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; background: var(--bg-surface-elevated); padding: 0.35rem; border-radius: var(--radius-sm);">
+            <button type="button" id="tab-auth-login" class="btn btn-sm" style="flex: 1; background: var(--primary); color: white;" onclick="appState.switchAuthTab('login')">
+              Sign In
+            </button>
+            <button type="button" id="tab-auth-register" class="btn btn-sm btn-outline" style="flex: 1; border: none;" onclick="appState.switchAuthTab('register')">
+              Register New User
+            </button>
+          </div>
+
+          <!-- Login Form -->
+          <form id="form-login" onsubmit="appState.handleLogin(event)">
+            <div class="form-group">
+              <label class="form-label" for="login-email">Email Address <span class="required">*</span></label>
+              <input type="email" id="login-email" class="form-control" placeholder="e.g. aaryan@lnmiit.ac.in" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="login-password">Password <span class="required">*</span></label>
+              <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+            </div>
+            <div id="login-error-msg" class="invalid-feedback" style="margin-bottom: 1rem; display: none;"></div>
+            <button type="submit" class="btn btn-primary" id="btn-submit-login" style="width: 100%;">
+              Sign In to CiteNest
+            </button>
+          </form>
+
+          <!-- Registration Form -->
+          <form id="form-register" style="display: none;" onsubmit="appState.handleRegister(event)">
+            <div class="form-group">
+              <label class="form-label" for="reg-name">Full Name <span class="required">*</span></label>
+              <input type="text" id="reg-name" class="form-control" placeholder="e.g. Aaryan Verma" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="reg-email">Email Address <span class="required">*</span></label>
+              <input type="email" id="reg-email" class="form-control" placeholder="e.g. student@lnmiit.ac.in" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="reg-password">Password (min 6 characters) <span class="required">*</span></label>
+              <input type="password" id="reg-password" class="form-control" minlength="6" placeholder="••••••••" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="reg-role">Academic Role <span class="required">*</span></label>
+              <select id="reg-role" class="form-control">
+                <option value="Student">Student (Academic User)</option>
+                <option value="Researcher/Faculty">Researcher/Faculty (Academic User)</option>
+              </select>
+            </div>
+            <div id="reg-error-msg" class="invalid-feedback" style="margin-bottom: 1rem; display: none;"></div>
+            <button type="submit" class="btn btn-primary" id="btn-submit-register" style="width: 100%;">
+              Create Academic Account
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ==============================================================
+           2. DASHBOARD VIEW (UC-020, FR-031)
+           ============================================================== -->
+      <section id="view-dashboard" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Academic Dashboard</h1>
+            <p class="page-subtitle" id="dashboard-welcome-text">Overview of your references, collections, and academic documents</p>
+          </div>
+          <div style="display: flex; gap: 0.75rem;">
+            <button type="button" class="btn btn-outline" onclick="appState.openAddReferenceModal()">
+              <span>➕</span> Add Reference
+            </button>
+            <button type="button" class="btn btn-primary" onclick="appState.createNewDocumentPrompt()">
+              <span>📝</span> New Paper
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="grid-cards">
+          <div class="stat-card">
+            <div class="stat-icon">📚</div>
+            <div class="stat-content">
+              <h3>Total References</h3>
+              <div class="stat-value" id="stat-total-references">0</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📁</div>
+            <div class="stat-content">
+              <h3>Collections</h3>
+              <div class="stat-value" id="stat-total-collections">0</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-content">
+              <h3>Documents</h3>
+              <div class="stat-value" id="stat-total-documents">0</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+              <h3>Reference Breakdown</h3>
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.35rem;" id="stat-type-breakdown">
+                Journal: 0 | Book: 0 | Web: 0
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;" class="dashboard-split">
+          <!-- Recent Documents Card -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Recent Documents</h2>
+              <button type="button" class="btn btn-sm btn-outline" onclick="appState.navigateTo('editor')">View All</button>
+            </div>
+            <div id="dashboard-recent-docs-list">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- User Collections Card -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">My Collections</h2>
+              <button type="button" class="btn btn-sm btn-outline" onclick="appState.navigateTo('collections')">Manage</button>
+            </div>
+            <div id="dashboard-collections-list">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================================
+           3. REFERENCE LIBRARY VIEW (UC-004 - UC-006, FR-006 - FR-016)
+           ============================================================== -->
+      <section id="view-references" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Reference Library</h1>
+            <p class="page-subtitle">Manage, search, validate, and organize your academic citations</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="btn-open-add-ref" onclick="appState.openAddReferenceModal()">
+            <span>➕</span> Add Reference
+          </button>
+        </div>
+
+        <!-- Multi-criteria Search & Facet Filters (FR-015, FR-016) -->
+        <div class="filter-bar">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="input-ref-search" placeholder="Search by title, author, year, or keywords..." oninput="appState.filterReferences()">
+          </div>
+
+          <select id="select-ref-type" class="select-filter" onchange="appState.filterReferences()">
+            <option value="All">All Types</option>
+            <option value="Journal Article">Journal Article</option>
+            <option value="Book">Book</option>
+            <option value="Website">Website</option>
+          </select>
+
+          <select id="select-ref-collection" class="select-filter" onchange="appState.filterReferences()">
+            <option value="All">All Collections</option>
+          </select>
+
+          <button type="button" class="btn btn-sm btn-secondary" onclick="appState.clearRefFilters()">
+            Clear Filters
+          </button>
+        </div>
+
+        <!-- Reference List Container -->
+        <div id="references-list-container">
+          <!-- Rendered via JS -->
+        </div>
+      </section>
+
+      <!-- ==============================================================
+           4. COLLECTIONS VIEW (UC-008 - UC-012, FR-011 - FR-014)
+           ============================================================== -->
+      <section id="view-collections" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Project Collections</h1>
+            <p class="page-subtitle">Organize references into project groupings. Deleting a collection preserves underlying references.</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="btn-open-create-col" onclick="appState.openCreateCollectionModal()">
+            <span>📁➕</span> New Collection
+          </button>
+        </div>
+
+        <div id="collections-list-container" class="grid-cards">
+          <!-- Rendered via JS -->
+        </div>
+      </section>
+
+      <!-- ==============================================================
+           5. PAPER EDITOR VIEW (UC-013 - UC-019, FR-017 - FR-030)
+           ============================================================== -->
+      <section id="view-editor" style="display: none;">
+        <div class="page-header" style="margin-bottom: 1.25rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <h1 class="page-title">Paper Editor</h1>
+              <span id="editor-state-badge" class="badge badge-draft">Draft</span>
+            </div>
+            <p class="page-subtitle">Rich-text academic writing with inline citation tokens and real-time bibliography</p>
+          </div>
+
+          <!-- Document Action Controls -->
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <select id="editor-doc-selector" class="select-filter" onchange="appState.switchActiveDocument(this.value)">
+              <!-- Populated dynamically -->
+            </select>
+            <button type="button" class="btn btn-sm btn-outline" onclick="appState.createNewDocumentPrompt()">
+              <span>➕</span> New Document
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-editor-save" onclick="appState.saveCurrentDocument()">
+              <span>💾</span> Save
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-open-export" onclick="appState.openExportModal(false)">
+              <span>📥</span> Export Paper
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" id="btn-open-export-bib" onclick="appState.openExportModal(true)">
+              <span>📜</span> Export Bibliography
+            </button>
+          </div>
+        </div>
+
+        <div class="editor-wrapper">
+          <!-- Left/Center: Editor Canvas -->
+          <div class="editor-canvas-container">
+            <div class="editor-header-bar">
+              <input type="text" id="editor-doc-title-input" class="editor-doc-title-input" placeholder="Document Title...">
+              
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <label for="editor-style-select" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Style:</label>
+                <select id="editor-style-select" class="select-filter" onchange="appState.handleStyleChange(this.value)">
+                  <option value="APA">APA 7th</option>
+                  <option value="MLA">MLA 9th</option>
+                  <option value="IEEE">IEEE</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Rich-Text Toolbar -->
+            <div class="editor-toolbar" id="editor-toolbar">
+              <button type="button" class="tool-btn" id="btn-tool-bold" onclick="appState.formatDoc('bold')" title="Bold (Ctrl+B)"><b>B</b></button>
+              <button type="button" class="tool-btn" id="btn-tool-italic" onclick="appState.formatDoc('italic')" title="Italic (Ctrl+I)"><i>I</i></button>
+              <div class="tool-separator"></div>
+              <button type="button" class="tool-btn" id="btn-tool-h1" onclick="appState.formatHeading('h1')" title="Heading 1"><b>H1</b></button>
+              <button type="button" class="tool-btn" id="btn-tool-h2" onclick="appState.formatHeading('h2')" title="Heading 2"><b>H2</b></button>
+              <button type="button" class="tool-btn" id="btn-tool-h3" onclick="appState.formatHeading('h3')" title="Heading 3"><b>H3</b></button>
+              <button type="button" class="tool-btn" id="btn-tool-p" onclick="appState.formatHeading('p')" title="Normal Paragraph">¶</button>
+              <div class="tool-separator"></div>
+              <button type="button" class="tool-btn" onclick="appState.formatDoc('undo')" title="Undo">↩</button>
+              <button type="button" class="tool-btn" onclick="appState.formatDoc('redo')" title="Redo">↪</button>
+              <div class="tool-separator"></div>
+              <button type="button" class="btn btn-sm btn-primary" id="btn-tool-insert-citation" onclick="appState.openCitationPickerDrawer()" style="margin-left: auto;">
+                <span>➕</span> Insert Citation
+              </button>
+            </div>
+
+            <!-- Paper Sheet (ContentEditable) -->
+            <div id="editor-sheet" class="paper-sheet" contenteditable="true" spellcheck="true" oninput="appState.handleEditorInput()">
+              <h1>Title</h1>
+              <p>Type your academic text here...</p>
+            </div>
+          </div>
+
+          <!-- Right Sidebar: Live Bibliography & Insert Drawer -->
+          <div class="editor-sidebar">
+            <!-- Live Bibliography Preview Card -->
+            <div class="bib-preview-card">
+              <div class="bib-preview-header">
+                <div>
+                  <h3 style="font-size: 1rem; font-weight: 700; color: var(--text-main);">Live Bibliography</h3>
+                  <div style="font-size: 0.75rem; color: var(--text-dim);" id="bib-style-indicator">Style: APA (Alphabetical)</div>
+                </div>
+                <span class="badge badge-active" style="font-size: 0.65rem;">Auto-Sync</span>
+              </div>
+              <div id="bib-entries-container" class="bib-entries-list">
+                <!-- Live styled references rendered here -->
+              </div>
+            </div>
+
+            <!-- Citation Inserter Drawer Card -->
+            <div class="citation-picker-card" id="citation-picker-drawer">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+                <h3 style="font-size: 0.95rem; font-weight: 700;">Library Citation Picker</h3>
+                <span style="font-size: 0.75rem; color: var(--text-dim);">Click to insert at cursor</span>
+              </div>
+              <input type="text" id="input-picker-search" class="form-control" placeholder="Search references..." oninput="appState.filterPickerReferences()" style="margin-bottom: 0.75rem; font-size: 0.85rem; padding: 0.45rem 0.75rem;">
+              <div id="picker-references-list" style="max-height: 280px; overflow-y: auto;">
+                <!-- Populated via JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==============================================================
+           6. ADMIN PORTAL VIEW (UC-003, FR-032, FR-033, NFR-019)
+           ============================================================== -->
+      <section id="view-admin" style="display: none;">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Administrator Portal</h1>
+            <p class="page-subtitle">System monitoring, user account administration, and immutable audit logging</p>
+          </div>
+          <span class="badge badge-admin" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">Administrator Session</span>
+        </div>
+
+        <!-- System Monitoring Metric Cards -->
+        <div class="grid-cards" id="admin-metrics-container">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- User Management Table Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">User Account Management</h2>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Toggle Active/Suspended, update roles, or delete users</span>
+          </div>
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>User ID</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>References</th>
+                  <th>Documents</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-table-body">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Audit Log Viewer Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Immutable Audit Log (NFR-019)</h2>
+            <div class="search-input-wrapper" style="max-width: 300px;">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="input-audit-search" placeholder="Search audit logs..." oninput="appState.filterAuditLogs(this.value)">
+            </div>
+          </div>
+          <div style="overflow-x: auto; max-height: 400px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Log ID</th>
+                  <th>Actor ID</th>
+                  <th>Action</th>
+                  <th>Timestamp (UTC)</th>
+                </tr>
+              </thead>
+              <tbody id="admin-logs-table-body">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ==============================================================
+         MODALS
+         ============================================================== -->
+
+    <!-- 1. Add / Edit Reference Modal (UC-004, UC-005, Annex A) -->
+    <div class="modal-backdrop" id="modal-reference">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-ref-title">Add Reference</h2>
+          <button type="button" class="modal-close-btn" onclick="appState.closeModal('modal-reference')">&times;</button>
+        </div>
+        <form id="form-reference" onsubmit="appState.handleSaveReference(event)">
+          <div class="modal-body">
+            <!-- Hidden ref ID for edit -->
+            <input type="hidden" id="ref-field-id">
+
+            <!-- Type Selector -->
+            <div class="form-group">
+              <label class="form-label" for="ref-field-type">Reference Type <span class="required">*</span></label>
+              <select id="ref-field-type" class="form-control" onchange="appState.handleRefTypeChange(this.value)">
+                <option value="Journal Article">Journal Article</option>
+                <option value="Book">Book</option>
+                <option value="Website">Website</option>
+              </select>
+            </div>
+
+            <!-- Title -->
+            <div class="form-group">
+              <label class="form-label" for="ref-field-title">Title <span class="required">*</span></label>
+              <input type="text" id="ref-field-title" class="form-control" placeholder="e.g. Deep Learning">
+              <div id="err-title" class="invalid-feedback"></div>
+            </div>
+
+            <!-- Authors -->
+            <div class="form-group" id="group-authors">
+              <label class="form-label" for="ref-field-authors">
+                Author(s) <span class="required" id="req-authors">*</span>
+              </label>
+              <input type="text" id="ref-field-authors" class="form-control" placeholder="e.g. Goodfellow, I., Bengio, Y., & Courville, A.">
+              <div id="err-authors" class="invalid-feedback"></div>
+            </div>
+
+            <!-- Year -->
+            <div class="form-group">
+              <label class="form-label" for="ref-field-year">Publication Year <span class="required">*</span></label>
+              <input type="text" id="ref-field-year" class="form-control" placeholder="e.g. 2016 or 2024">
+              <div id="err-year" class="invalid-feedback"></div>
+            </div>
+
+            <!-- JOURNAL SPECIFIC FIELDS -->
+            <div id="fields-journal">
+              <div class="form-group">
+                <label class="form-label" for="ref-field-journalName">Journal Name <span class="required">*</span></label>
+                <input type="text" id="ref-field-journalName" class="form-control" placeholder="e.g. Advances in Neural Information Processing Systems">
+                <div id="err-journalName" class="invalid-feedback"></div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                  <label class="form-label" for="ref-field-volumeIssue">Volume / Issue (Optional)</label>
+                  <input type="text" id="ref-field-volumeIssue" class="form-control" placeholder="e.g. 30(1)">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="ref-field-pages">Pages (Optional)</label>
+                  <input type="text" id="ref-field-pages" class="form-control" placeholder="e.g. 5998-6008">
+                </div>
+              </div>
+            </div>
+
+            <!-- BOOK SPECIFIC FIELDS -->
+            <div id="fields-book" style="display: none;">
+              <div class="form-group">
+                <label class="form-label" for="ref-field-publisher">Publisher <span class="required">*</span></label>
+                <input type="text" id="ref-field-publisher" class="form-control" placeholder="e.g. MIT Press">
+                <div id="err-publisher" class="invalid-feedback"></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="ref-field-editionPlace">Edition / Place (Optional)</label>
+                <input type="text" id="ref-field-editionPlace" class="form-control" placeholder="e.g. Cambridge, MA">
+              </div>
+            </div>
+
+            <!-- WEBSITE SPECIFIC FIELDS -->
+            <div id="fields-website" style="display: none;">
+              <div class="form-group">
+                <label class="form-label" for="ref-field-siteName">Site Name (Optional if authors provided)</label>
+                <input type="text" id="ref-field-siteName" class="form-control" placeholder="e.g. APA Style">
+                <div id="err-siteName" class="invalid-feedback"></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="ref-field-url">URL <span class="required">*</span></label>
+                <input type="text" id="ref-field-url" class="form-control" placeholder="https://apastyle.apa.org/...">
+                <div id="err-url" class="invalid-feedback"></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="ref-field-accessDate">Access Date <span class="required">*</span></label>
+                <input type="date" id="ref-field-accessDate" class="form-control">
+                <div id="err-accessDate" class="invalid-feedback"></div>
+              </div>
+            </div>
+
+            <!-- Optional Initial Collection Assignment -->
+            <div class="form-group" id="group-initial-collection">
+              <label class="form-label" for="ref-field-collectionId">Assign to Collection (Optional)</label>
+              <select id="ref-field-collectionId" class="form-control">
+                <option value="">None (Library Root)</option>
+              </select>
+            </div>
+
+            <!-- Keywords -->
+            <div class="form-group">
+              <label class="form-label" for="ref-field-keywords">Keywords (Comma-separated for search)</label>
+              <input type="text" id="ref-field-keywords" class="form-control" placeholder="e.g. deep learning, transformers, nlp">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <!-- Cancel Branch (Annex E) -->
+            <button type="button" class="btn btn-secondary" onclick="appState.closeModal('modal-reference')">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary" id="btn-save-reference">
+              Save Reference
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 2. Cascading Delete Warning Modal (UC-006, BR-009, Annex B & E) -->
+    <div class="modal-backdrop" id="modal-cascade-delete">
+      <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header" style="border-bottom-color: rgba(239, 68, 68, 0.3);">
+          <h2 class="modal-title" style="color: var(--danger);">Confirm Reference Deletion</h2>
+          <button type="button" class="modal-close-btn" onclick="appState.closeModal('modal-cascade-delete')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="cascade-delete-content">
+            <!-- Filled dynamically based on whether cited or not -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <!-- Cancel Branch -->
+          <button type="button" class="btn btn-secondary" onclick="appState.closeModal('modal-cascade-delete')">
+            Cancel
+          </button>
+          <button type="button" class="btn btn-danger" id="btn-confirm-cascade-delete">
+            Confirm & Clean Citations
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Create / Rename Collection Modal -->
+    <div class="modal-backdrop" id="modal-collection">
+      <div class="modal-dialog" style="max-width: 440px;">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-col-title">Create Collection</h2>
+          <button type="button" class="modal-close-btn" onclick="appState.closeModal('modal-collection')">&times;</button>
+        </div>
+        <form onsubmit="appState.handleSaveCollection(event)">
+          <div class="modal-body">
+            <input type="hidden" id="col-field-id">
+            <div class="form-group">
+              <label class="form-label" for="col-field-name">Collection Name <span class="required">*</span></label>
+              <input type="text" id="col-field-name" class="form-control" placeholder="e.g. ML Research Papers" required>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="appState.closeModal('modal-collection')">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-collection">Save Collection</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 4. Add Reference to Collection Modal -->
+    <div class="modal-backdrop" id="modal-assign-collection">
+      <div class="modal-dialog" style="max-width: 440px;">
+        <div class="modal-header">
+          <h2 class="modal-title">Manage Collection Memberships</h2>
+          <button type="button" class="modal-close-btn" onclick="appState.closeModal('modal-assign-collection')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;" id="assign-ref-title-display"></p>
+          <div id="assign-collections-checkboxes">
+            <!-- Checkboxes rendered via JS -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="appState.closeModal('modal-assign-collection')">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Export Modal (UC-018, UC-019, FR-028 - FR-030) -->
+    <div class="modal-backdrop" id="modal-export">
+      <div class="modal-dialog" style="max-width: 480px;">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-export-title">Export Academic Document</h2>
+          <button type="button" class="modal-close-btn" onclick="appState.closeModal('modal-export')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+            CiteNest formats document content, in-text citations, and dynamic bibliography according to your selected style.
+          </p>
+
+          <div class="form-group">
+            <label class="form-label">Export Format</label>
+            <div style="display: flex; gap: 1rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="export-format" value="PDF" checked>
+                <b>PDF Document (.pdf)</b>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="export-format" value="TXT">
+                <b>Plain Text (.txt)</b>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group" id="group-export-scope">
+            <label class="form-label">Export Scope</label>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="export-scope" value="full" checked>
+                <span>Full Document (Content + In-text Citations + References)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" name="export-scope" value="bib">
+                <span>Standalone Bibliography Only</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="appState.closeModal('modal-export')">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-trigger-download" onclick="appState.triggerExportDownload()">
+            <span>📥</span> Download File
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Admin Role Update Modal -->
+    <div class="modal-backdrop" id="modal-admin-role">
+      <div class="modal-dialog" style="max-width: 440px;">
+        <div class="modal-header">
+          <h2 class="modal-title">Change User Role</h2>
+          <button type="button" class="modal-close-btn" onclick="appState.closeModal('modal-admin-role')">&times;</button>
+        </div>
+        <form onsubmit="appState.handleAdminRoleChange(event)">
+          <div class="modal-body">
+            <input type="hidden" id="admin-target-user-id">
+            <div class="form-group">
+              <label class="form-label">Select Role</label>
+              <select id="admin-select-role" class="form-control">
+                <option value="Student">Student (Academic User)</option>
+                <option value="Researcher/Faculty">Researcher/Faculty (Academic User)</option>
+                <option value="Administrator">Administrator</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="appState.closeModal('modal-admin-role')">Cancel</button>
+            <button type="submit" class="btn btn-primary">Update Role</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+  </div>
+
+  <!-- Main Modular Frontend Application Script -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
