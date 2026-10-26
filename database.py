@@ -1,6 +1,11 @@
 """
 Database and Persistence Layer for CiteNest.
-Provides SQLite storage, schema initialization, and demo data seeder.
+
+Two-level database architecture:
+  - Central Database (citenest.db): users, sessions, shared catalog references,
+    collections, documents, citations, bibliographies, audit logs.
+  - Personal Databases (user_databases/<userId>.db): each user's private
+    personal reference records, isolated from other users.
 """
 
 import sqlite3
@@ -12,6 +17,10 @@ from typing import Dict, Any, List, Optional
 import uuid
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "citenest.db")
+
+# Directory for per-user personal SQLite databases
+USER_DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_databases")
+os.makedirs(USER_DB_DIR, exist_ok=True)
 
 
 def hash_password(password: str) -> str:
@@ -25,9 +34,64 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 
 
 def get_db():
+    """Returns a connection to the central application database."""
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+def _user_db_path(user_id: str) -> str:
+    """
+    Returns the filesystem path for a user's personal reference database.
+    The path is derived solely from user_id — never from user-supplied input.
+    Only alphanumeric characters and hyphens/underscores are allowed in user_id.
+    """
+    safe_id = "".join(c for c in user_id if c.isalnum() or c in "-_")
+    if not safe_id:
+        raise ValueError(f"Invalid user_id for database path: {user_id!r}")
+    return os.path.join(USER_DB_DIR, f"{safe_id}.db")
+
+
+def get_user_db(user_id: str):
+    """
+    Returns a connection to a user's personal reference database.
+    Creates and initialises the database file on first access.
+    Passwords and session data are NEVER stored here.
+    """
+    path = _user_db_path(user_id)
+    conn = sqlite3.connect(path, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    init_user_db(conn)
+    return conn
+
+
+def init_user_db(conn):
+    """
+    Initialises the personal reference database schema.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS personal_references (
+        referenceId  TEXT PRIMARY KEY,
+        type         TEXT NOT NULL,
+        title        TEXT NOT NULL,
+        authors      TEXT,
+        year         TEXT,
+        journalName  TEXT,
+        volumeIssue  TEXT,
+        pages        TEXT,
+        publisher    TEXT,
+        editionPlace TEXT,
+        siteName     TEXT,
+        url          TEXT,
+        accessDate   TEXT,
+        keywords     TEXT,
+        createdDate  TEXT NOT NULL
+    );
+    """)
+    conn.commit()
 
 
 def init_db():
@@ -58,29 +122,47 @@ def init_db():
         );
         """)
 
-        # References table
+        # References table — central catalog
+        # isShared=1  → visible to all authenticated users (shared catalog)
+        # isShared=0  → legacy personal reference stored in central DB (ownerId scope)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS references_tab (
-            referenceId TEXT PRIMARY KEY,
-            ownerId TEXT NOT NULL,
-            type TEXT NOT NULL,
-            title TEXT NOT NULL,
-            authors TEXT,
-            year TEXT,
-            journalName TEXT,
-            volumeIssue TEXT,
-            pages TEXT,
-            publisher TEXT,
-            editionPlace TEXT,
-            siteName TEXT,
-            url TEXT,
-            accessDate TEXT,
-            keywords TEXT,
+            referenceId    TEXT PRIMARY KEY,
+            ownerId        TEXT NOT NULL,
+            type           TEXT NOT NULL,
+            title          TEXT NOT NULL,
+            authors        TEXT,
+            year           TEXT,
+            journalName    TEXT,
+            volumeIssue    TEXT,
+            pages          TEXT,
+            publisher      TEXT,
+            editionPlace   TEXT,
+            siteName       TEXT,
+            url            TEXT,
+            accessDate     TEXT,
+            keywords       TEXT,
             lifecycleState TEXT NOT NULL DEFAULT 'Stored',
-            createdDate TEXT NOT NULL,
+            isShared       INTEGER NOT NULL DEFAULT 0,
+            createdDate    TEXT NOT NULL,
             FOREIGN KEY (ownerId) REFERENCES users (userId) ON DELETE CASCADE
         );
         """)
+
+        # Safe migration: add isShared column to existing databases that pre-date this schema
+        try:
+            cursor.execute("ALTER TABLE references_tab ADD COLUMN isShared INTEGER NOT NULL DEFAULT 0;")
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+        # collection_memberships: add referenceSource to track CENTRAL vs PERSONAL
+        # Safe migration only — do not break existing rows
+        try:
+            cursor.execute("ALTER TABLE collection_memberships ADD COLUMN referenceSource TEXT NOT NULL DEFAULT 'CENTRAL';")
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
 
         # Collections table
         cursor.execute("""
@@ -214,7 +296,7 @@ def seed_demo_data(force_reset: bool = False):
             VALUES (?, ?, ?, ?);
         """, ("C10", "ML Research Papers", "U101", now))
 
-        # 3. Pre-seeded References
+        # 3. Pre-seeded References (Central Shared Catalog: isShared=1)
         references = [
             (
                 "R55", "U101", "Book", "Deep Learning",
@@ -223,7 +305,7 @@ def seed_demo_data(force_reset: bool = False):
                 "MIT Press", "Cambridge, MA",
                 None, None, None,
                 "deep learning, neural networks, machine learning",
-                "Cited", now
+                "Cited", 1, now
             ),
             (
                 "R56", "U101", "Journal Article", "Attention Is All You Need",
@@ -232,7 +314,7 @@ def seed_demo_data(force_reset: bool = False):
                 None, None,
                 None, None, None,
                 "transformers, attention mechanism, deep learning, NLP",
-                "InCollection", now
+                "InCollection", 1, now
             ),
             (
                 "R57", "U101", "Website", "APA Style Common Reference Examples Guide",
@@ -241,26 +323,56 @@ def seed_demo_data(force_reset: bool = False):
                 None, None,
                 "APA Style", "https://apastyle.apa.org/instructional-aids/reference-examples.pdf", "2026-10-25",
                 "citation style, APA guide, reference manual",
-                "Stored", now
+                "Stored", 1, now
             ),
         ]
         cursor.executemany("""
             INSERT INTO references_tab (
                 referenceId, ownerId, type, title, authors, year,
                 journalName, volumeIssue, pages, publisher, editionPlace,
-                siteName, url, accessDate, keywords, lifecycleState, createdDate
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                siteName, url, accessDate, keywords, lifecycleState, isShared, createdDate
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """, references)
 
-        # 4. Collection Memberships
+        # 4. Collection Memberships (with referenceSource: CENTRAL / PERSONAL)
         memberships = [
-            ("M20", "C10", "R55"),
-            ("M21", "C10", "R56")
+            ("M20", "C10", "R55", "CENTRAL"),
+            ("M21", "C10", "R56", "CENTRAL")
         ]
         cursor.executemany("""
-            INSERT INTO collection_memberships (membershipId, collectionId, referenceId)
-            VALUES (?, ?, ?);
+            INSERT INTO collection_memberships (membershipId, collectionId, referenceId, referenceSource)
+            VALUES (?, ?, ?, ?);
         """, memberships)
+
+        # Seed sample personal reference in U101's isolated personal SQLite database
+        try:
+            with get_user_db("U101") as uconn:
+                uconn.execute("""
+                    INSERT OR REPLACE INTO personal_references (
+                        referenceId, type, title, authors, year,
+                        journalName, volumeIssue, pages, publisher, editionPlace,
+                        siteName, url, accessDate, keywords, createdDate
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """, (
+                    "PR-101",
+                    "Journal Article",
+                    "My Research Notes on Neural Optimization",
+                    "Verma, A. & Sharma, K.",
+                    "2025",
+                    "Journal of Machine Learning Exploration",
+                    "12(3)",
+                    "101-115",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "neural optimization, notes, private research",
+                    now
+                ))
+                uconn.commit()
+        except Exception as e:
+            print(f"Warning seeding user personal DB: {e}")
 
         # 5. Pre-seeded Document & Inline Citation & Bibliography
         doc_content = (

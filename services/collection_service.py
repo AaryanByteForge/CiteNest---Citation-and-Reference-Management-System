@@ -147,32 +147,72 @@ class CollectionService:
             return True, f"Collection '{col_name}' deleted. Underlying references preserved in library."
 
     @staticmethod
-    def add_reference_to_collection(owner_id: str, collection_id: str, reference_id: str) -> Tuple[bool, str]:
+    def add_reference_to_collection(
+        owner_id: str,
+        collection_id: str,
+        reference_id: str,
+        reference_source: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """
+        Adds a reference (either Central Catalog or Personal Library) to a collection.
+        Validates reference existence and access via application services (Requirement 5).
+        Enforces that users can only add their own personal references or shared central references.
+        """
+        from services.personal_reference_service import PersonalReferenceService
+
         with get_db() as conn:
             cursor = conn.cursor()
-            # Verify ownership of both collection and reference
+            # 1. Verify ownership of collection
             cursor.execute("SELECT collectionId FROM collections WHERE collectionId = ? AND ownerId = ?;", (collection_id, owner_id))
             if not cursor.fetchone():
                 return False, "Collection not found or access denied."
 
-            cursor.execute("SELECT lifecycleState FROM references_tab WHERE referenceId = ? AND ownerId = ?;", (reference_id, owner_id))
-            ref = cursor.fetchone()
-            if not ref:
-                return False, "Reference not found or access denied."
+            # 2. Validate reference access through application services
+            ref_source = reference_source
+            is_central = False
+            ref_lifecycle = None
 
-            # Check if already a member
-            cursor.execute("SELECT membershipId FROM collection_memberships WHERE collectionId = ? AND referenceId = ?;", (collection_id, reference_id))
+            # Check personal DB first if source is personal or id starts with PR-
+            if ref_source == "PERSONAL" or reference_id.startswith("PR-"):
+                pref = PersonalReferenceService.get_reference_by_id(owner_id, reference_id)
+                if not pref:
+                    return False, "Personal reference not found or access denied."
+                ref_source = "PERSONAL"
+            else:
+                # Check Central DB
+                cursor.execute(
+                    "SELECT lifecycleState, isShared, ownerId FROM references_tab WHERE referenceId = ? AND (isShared = 1 OR ownerId = ?);",
+                    (reference_id, owner_id)
+                )
+                cref = cursor.fetchone()
+                if cref:
+                    ref_source = "CENTRAL"
+                    is_central = True
+                    ref_lifecycle = cref["lifecycleState"]
+                else:
+                    # Check personal DB as fallback
+                    pref = PersonalReferenceService.get_reference_by_id(owner_id, reference_id)
+                    if pref:
+                        ref_source = "PERSONAL"
+                    else:
+                        return False, "Reference not found or access denied."
+
+            # 3. Check if already a member
+            cursor.execute(
+                "SELECT membershipId FROM collection_memberships WHERE collectionId = ? AND referenceId = ?;",
+                (collection_id, reference_id)
+            )
             if cursor.fetchone():
                 return True, "Reference is already in this collection."
 
             mem_id = f"M{uuid.uuid4().hex[:5].upper()}"
             cursor.execute("""
-                INSERT INTO collection_memberships (membershipId, collectionId, referenceId)
-                VALUES (?, ?, ?);
-            """, (mem_id, collection_id, reference_id))
+                INSERT INTO collection_memberships (membershipId, collectionId, referenceId, referenceSource)
+                VALUES (?, ?, ?, ?);
+            """, (mem_id, collection_id, reference_id, ref_source))
 
-            # Update lifecycle state if not Cited
-            if ref["lifecycleState"] != ReferenceLifecycleState.CITED.value:
+            # Update lifecycle state in central DB if applicable
+            if is_central and ref_lifecycle != ReferenceLifecycleState.CITED.value:
                 cursor.execute("""
                     UPDATE references_tab SET lifecycleState = ? WHERE referenceId = ?;
                 """, (ReferenceLifecycleState.IN_COLLECTION.value, reference_id))
@@ -182,26 +222,32 @@ class CollectionService:
 
     @staticmethod
     def remove_reference_from_collection(owner_id: str, collection_id: str, reference_id: str) -> Tuple[bool, str]:
+        """
+        Removes a reference from a collection.
+        Composition Rule: NEVER deletes the underlying reference (Requirement 5).
+        """
         with get_db() as conn:
             cursor = conn.cursor()
-            # Verify ownership
+            # Verify collection ownership
             cursor.execute("SELECT collectionId FROM collections WHERE collectionId = ? AND ownerId = ?;", (collection_id, owner_id))
             if not cursor.fetchone():
                 return False, "Collection not found or access denied."
 
             cursor.execute("DELETE FROM collection_memberships WHERE collectionId = ? AND referenceId = ?;", (collection_id, reference_id))
 
-            # Re-evaluate lifecycleState
-            cursor.execute("SELECT COUNT(*) FROM citations WHERE referenceId = ?;", (reference_id,))
-            is_cited = cursor.fetchone()[0] > 0
-            if is_cited:
-                new_state = ReferenceLifecycleState.CITED.value
-            else:
-                cursor.execute("SELECT COUNT(*) FROM collection_memberships WHERE referenceId = ?;", (reference_id,))
-                has_other = cursor.fetchone()[0] > 0
-                new_state = ReferenceLifecycleState.IN_COLLECTION.value if has_other else ReferenceLifecycleState.STORED.value
+            # Re-evaluate lifecycleState if it is in central DB
+            cursor.execute("SELECT COUNT(*) FROM references_tab WHERE referenceId = ?;", (reference_id,))
+            if cursor.fetchone()[0] > 0:
+                cursor.execute("SELECT COUNT(*) FROM citations WHERE referenceId = ?;", (reference_id,))
+                is_cited = cursor.fetchone()[0] > 0
+                if is_cited:
+                    new_state = ReferenceLifecycleState.CITED.value
+                else:
+                    cursor.execute("SELECT COUNT(*) FROM collection_memberships WHERE referenceId = ?;", (reference_id,))
+                    has_other = cursor.fetchone()[0] > 0
+                    new_state = ReferenceLifecycleState.IN_COLLECTION.value if has_other else ReferenceLifecycleState.STORED.value
 
-            cursor.execute("UPDATE references_tab SET lifecycleState = ? WHERE referenceId = ?;", (new_state, reference_id))
+                cursor.execute("UPDATE references_tab SET lifecycleState = ? WHERE referenceId = ?;", (new_state, reference_id))
 
             conn.commit()
             return True, "Reference removed from collection."

@@ -1,4 +1,4 @@
-# CiteNest — End-to-End Implementation Reference
+# CiteNest - End-to-End Implementation Reference
 
 > **One file. Everything.**
 > File structure, data models, module interfaces, business rules, API contracts, frontend architecture, citation formatting algorithms, export pipeline, and deployment workflow.
@@ -10,16 +10,16 @@
 1. [Project Overview](#1-project-overview)
 2. [File Structure](#2-file-structure)
 3. [Technology Stack & Dependencies](#3-technology-stack--dependencies)
-4. [Data Layer — Models & Schema](#4-data-layer--models--schema)
-5. [Authentication Module — `IAuth`](#5-authentication-module--iauth)
-6. [Reference Management — `IReference` + `ReferenceValidator`](#6-reference-management--ireference--referencevalidator)
-7. [Collection Module — `ICollection`](#7-collection-module--icollection)
-8. [Document Editor — `IDocument` / `DocumentEditor`](#8-document-editor--idocument--documenteditor)
-9. [Citation Engine — Strategy Pattern (`ICitation`)](#9-citation-engine--strategy-pattern-icitation)
-10. [Bibliography Module — `IBibliography`](#10-bibliography-module--ibibliography)
-11. [Export Module — `IExport` / `ExportService`](#11-export-module--iexport--exportservice)
-12. [Dashboard & Admin — `Administrator` / `AuditLog`](#12-dashboard--admin--administrator--auditlog)
-13. [REST API Contract — All Endpoints](#13-rest-api-contract--all-endpoints)
+4. [Data Layer - Models & Schema](#4-data-layer--models--schema)
+5. [Authentication Module - `IAuth`](#5-authentication-module--iauth)
+6. [Reference Management - `IReference` + `ReferenceValidator`](#6-reference-management--ireference--referencevalidator)
+7. [Collection Module - `ICollection`](#7-collection-module--icollection)
+8. [Document Editor - `IDocument` / `DocumentEditor`](#8-document-editor--idocument--documenteditor)
+9. [Citation Engine - Strategy Pattern (`ICitation`)](#9-citation-engine--strategy-pattern-icitation)
+10. [Bibliography Module - `IBibliography`](#10-bibliography-module--ibibliography)
+11. [Export Module - `IExport` / `ExportService`](#11-export-module--iexport--exportservice)
+12. [Dashboard & Admin - `Administrator` / `AuditLog`](#12-dashboard--admin--administrator--auditlog)
+13. [REST API Contract - All Endpoints](#13-rest-api-contract--all-endpoints)
 14. [Frontend Architecture](#14-frontend-architecture)
 15. [Pre-Seeded Demo Data](#15-pre-seeded-demo-data)
 16. [End-to-End Workflows (Use Cases)](#16-end-to-end-workflows-use-cases)
@@ -59,7 +59,7 @@ Prototype/
 ├── main.py                        # FastAPI app, all REST endpoints, session middleware
 ├── models.py                      # Pydantic schemas, Enums (UserRole, RefType, DocState...)
 ├── database.py                    # SQLite init, schema creation, password hashing, demo seeder
-├── validators.py                  # ReferenceValidator — per-type field validation (Annex A FR-007)
+├── validators.py                  # ReferenceValidator - per-type field validation (Annex A FR-007)
 ├── formatters.py                  # Strategy Pattern: CitationStyleFormatter, APA/MLA/IEEE subclasses
 ├── requirements.txt               # All pip dependencies (pinned versions)
 ├── README.md                      # Project overview and quickstart
@@ -108,19 +108,19 @@ Prototype/
 |---|---|
 | Vanilla HTML5 | Single-Page Application shell |
 | Vanilla CSS3 | Complete design system (no Tailwind, no Bootstrap) |
-| Vanilla JavaScript (ES2020) | `CiteNestApp` class — all interactivity |
+| Vanilla JavaScript (ES2020) | `CiteNestApp` class - all interactivity |
 | Google Fonts (Inter, Outfit, Cormorant Garamond, JetBrains Mono) | Academic typography |
 
 ### Database
 - **SQLite** via Python's built-in `sqlite3` module.
 - ACID-compliant, foreign keys enforced with `PRAGMA foreign_keys = ON`.
-- No ORM — raw SQL for precise control over cascade rules.
+- No ORM - raw SQL for precise control over cascade rules.
 
 ### All dependencies are installed exclusively into `.venv/` (workspace policy).
 
 ---
 
-## 4. Data Layer — Models & Schema
+## 4. Data Layer - Models & Schema
 
 ### 4.1 Enumerations (`models.py`)
 
@@ -235,7 +235,7 @@ CREATE TABLE documents (
     FOREIGN KEY (ownerId) REFERENCES users(userId) ON DELETE CASCADE
 );
 
--- Citations (Composition with Document — deleting doc deletes citations)
+-- Citations (Composition with Document - deleting doc deletes citations)
 CREATE TABLE citations (
     citationId TEXT PRIMARY KEY,
     documentId TEXT NOT NULL,
@@ -262,7 +262,7 @@ CREATE TABLE exported_files (
     fileName TEXT NOT NULL
 );
 
--- Audit Log (Immutable — no UPDATE/DELETE ever issued against this table)
+-- Audit Log (Immutable - no UPDATE/DELETE ever issued against this table)
 CREATE TABLE audit_logs (
     logId TEXT PRIMARY KEY,
     actorId TEXT NOT NULL,
@@ -289,14 +289,14 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 
 ---
 
-## 5. Authentication Module — `IAuth`
+## 5. Authentication Module - `IAuth`
 
 **File**: `services/auth_service.py`
 
 ### Registration (`UC-001`, `FR-001`, `FR-002`)
 1. Validate: name not empty, email contains `@`, password ≥ 6 chars, role is `Student` or `Researcher/Faculty`.
 2. Check uniqueness: `SELECT userId FROM users WHERE LOWER(email) = ?`.
-3. Hash password with PBKDF2-SHA256 before storing — never store plain text (`BR-007`, `NFR-005`).
+3. Hash password with PBKDF2-SHA256 before storing - never store plain text (`BR-007`, `NFR-005`).
 4. Auto-generate sequential `userId` (e.g., `U103`).
 5. Insert user + write AuditLog entry.
 
@@ -332,7 +332,7 @@ def get_current_user(authorization, x_session_id, session_id) -> Dict:
 
 ---
 
-## 6. Reference Management — `IReference` + `ReferenceValidator`
+## 6. Reference Management - `IReference` + `ReferenceValidator`
 
 **Files**: `services/reference_service.py`, `validators.py`
 
@@ -343,14 +343,14 @@ def get_current_user(authorization, x_session_id, session_id) -> Dict:
 | `title` | ✅ Required | ✅ Required | ✅ Required |
 | `authors` | ✅ Required | ✅ Required | ⚠️ Required unless `siteName` provided |
 | `year` | ✅ Required (4-digit) | ✅ Required | ✅ Required |
-| `journalName` | ✅ Required | — | — |
-| `volumeIssue` | Optional | — | — |
-| `pages` | Optional | — | — |
-| `publisher` | — | ✅ Required | — |
-| `editionPlace` | — | Optional | — |
-| `siteName` | — | — | Optional (required if no authors) |
-| `url` | — | — | ✅ Required (must start with `http`) |
-| `accessDate` | — | — | ✅ Required |
+| `journalName` | ✅ Required | - | - |
+| `volumeIssue` | Optional | - | - |
+| `pages` | Optional | - | - |
+| `publisher` | - | ✅ Required | - |
+| `editionPlace` | - | Optional | - |
+| `siteName` | - | - | Optional (required if no authors) |
+| `url` | - | - | ✅ Required (must start with `http`) |
+| `accessDate` | - | - | ✅ Required |
 | `keywords` | Optional | Optional | Optional |
 
 ### Add Reference Flow (`UC-004`)
@@ -428,12 +428,12 @@ Stored → (in library, not in collection, not cited)
     ↓ added to collection
 InCollection → (in at least one collection)
     ↓ cited in a document
-Cited → (cited in at least one document — highest priority state)
+Cited → (cited in at least one document - highest priority state)
 ```
 
 ---
 
-## 7. Collection Module — `ICollection`
+## 7. Collection Module - `ICollection`
 
 **File**: `services/collection_service.py`
 
@@ -454,12 +454,12 @@ for r_id in refs_previously_in_collection:
 
 ### Remove Reference from Collection
 - Always permitted, even if it is the reference's last collection.
-- Citations pull from the user's full library — collection membership has no bearing on citability.
+- Citations pull from the user's full library - collection membership has no bearing on citability.
 - Re-evaluates lifecycle state after removal.
 
 ---
 
-## 8. Document Editor — `IDocument` / `DocumentEditor`
+## 8. Document Editor - `IDocument` / `DocumentEditor`
 
 **File**: `services/document_service.py`, `static/js/app.js`
 
@@ -476,10 +476,10 @@ Citation(s) Inserted  →  Bibliography Generated  →  Exported
 ### Rich-Text Editor (Browser-Side)
 - Uses native `contenteditable="true"` `<div>` (the `.paper-sheet` element).
 - Formatting commands via `document.execCommand()`:
-  - Bold: `execCommand('bold')`
-  - Italic: `execCommand('italic')`
-  - H1/H2/H3: `execCommand('formatBlock', false, 'h1')`
-  - Paragraph: `execCommand('formatBlock', false, 'p')`
+ - Bold: `execCommand('bold')`
+ - Italic: `execCommand('italic')`
+ - H1/H2/H3: `execCommand('formatBlock', false, 'h1')`
+ - Paragraph: `execCommand('formatBlock', false, 'p')`
 - Auto-save: triggered 2.5 seconds after the user stops typing.
 
 ### Inline Citation Token (HTML structure inside document content)
@@ -501,7 +501,7 @@ Citation(s) Inserted  →  Bibliography Generated  →  Exported
 ```
 User places cursor in editor
 User clicks "Insert Citation" → Citation Picker Drawer focuses
-    → If library is empty: show "No references — Add one first" (UC-015 Alt Flow)
+    → If library is empty: show "No references - Add one first" (UC-015 Alt Flow)
 User types in picker search box → filters references in real-time
 User clicks a reference in the picker:
     1. JS captures current cursor position via window.getSelection()
@@ -536,7 +536,7 @@ Client re-renders.
 
 ---
 
-## 9. Citation Engine — Strategy Pattern (`ICitation`)
+## 9. Citation Engine - Strategy Pattern (`ICitation`)
 
 **File**: `formatters.py`
 
@@ -551,7 +551,7 @@ CitationEngine          (Context / Dispatcher)
     .get_formatter(style: CitationStyle) → CitationStyleFormatter
 ```
 
-### `parse_authors(authors_str)` — Shared Author Parser
+### `parse_authors(authors_str)` - Shared Author Parser
 Parses strings like `"Goodfellow, I., Bengio, Y., & Courville, A."` into:
 ```python
 [
@@ -620,7 +620,7 @@ Website:  [n] Author(s), "Title," *Site Name*, Year. [Online]. Available: URL. [
 
 ---
 
-## 10. Bibliography Module — `IBibliography`
+## 10. Bibliography Module - `IBibliography`
 
 **Core function**: `DocumentService.recompile_document_citations(owner_id, document_id)`
 
@@ -658,7 +658,7 @@ Website:  [n] Author(s), "Title," *Site Name*, Year. [Online]. Available: URL. [
 
 ---
 
-## 11. Export Module — `IExport` / `ExportService`
+## 11. Export Module - `IExport` / `ExportService`
 
 **File**: `services/export_service.py`
 
@@ -682,13 +682,13 @@ Full Document:
     Date: {date}
     ============================================================
 
-    {body — HTML stripped to plain text, headings become line breaks}
+    {body - HTML stripped to plain text, headings become line breaks}
 
     ----------------------------------------
     REFERENCES ({style})
     ----------------------------------------
 
-    {bibliography entries — each entry.text on its own line}
+    {bibliography entries - each entry.text on its own line}
 
 Standalone Bibliography:
     BIBLIOGRAPHY ({style} Style)
@@ -700,13 +700,13 @@ Standalone Bibliography:
 
 **Custom paragraph styles defined:**
 ```
-AcademicTitle   — Helvetica-Bold, 20pt, centered, dark slate
-AcademicMeta    — Helvetica, 10pt, centered, muted grey
-AcademicH1      — Helvetica-Bold, 15pt
-AcademicH2      — Helvetica-Bold, 13pt
-AcademicH3      — Helvetica-Bold, 11pt
-AcademicBody    — Times-Roman, 11pt, 18pt first-line indent
-AcademicBibEntry— Times-Roman, 10pt, 24pt hanging indent (leftIndent=24, firstLineIndent=-24)
+AcademicTitle - Helvetica-Bold, 20pt, centered, dark slate
+AcademicMeta - Helvetica, 10pt, centered, muted grey
+AcademicH1 - Helvetica-Bold, 15pt
+AcademicH2 - Helvetica-Bold, 13pt
+AcademicH3 - Helvetica-Bold, 11pt
+AcademicBody - Times-Roman, 11pt, 18pt first-line indent
+AcademicBibEntry -  Times-Roman, 10pt, 24pt hanging indent (leftIndent=24, firstLineIndent=-24)
 ```
 
 **HTML-to-PDF conversion:**
@@ -721,7 +721,7 @@ AcademicBibEntry— Times-Roman, 10pt, 24pt hanging indent (leftIndent=24, first
 
 ---
 
-## 12. Dashboard & Admin — `Administrator` / `AuditLog`
+## 12. Dashboard & Admin - `Administrator` / `AuditLog`
 
 **File**: `services/admin_service.py`
 
@@ -759,7 +759,7 @@ AcademicBibEntry— Times-Roman, 10pt, 24pt hanging indent (leftIndent=24, first
 ### Admin User Management
 - **Toggle status**: `UPDATE users SET accountStatus = ?` + if Suspended → `DELETE FROM sessions WHERE userId = ?` (immediate session invalidation).
 - **Change role**: `UPDATE users SET role = ?` + AuditLog.
-- **Delete user**: `DELETE FROM users WHERE userId = ?` — cascades to all their sessions, documents, references, collections.
+- **Delete user**: `DELETE FROM users WHERE userId = ?` - cascades to all their sessions, documents, references, collections.
 - **Guard**: Admin cannot delete or suspend their own account.
 
 ### Audit Log (`NFR-019`)
@@ -769,7 +769,7 @@ AcademicBibEntry— Times-Roman, 10pt, 24pt hanging indent (leftIndent=24, first
 
 ---
 
-## 13. REST API Contract — All Endpoints
+## 13. REST API Contract - All Endpoints
 
 **Base URL**: `http://127.0.0.1:8000`  
 **Auth header**: `Authorization: Bearer <sessionId>` (or `X-Session-ID: <sessionId>`)
@@ -900,20 +900,20 @@ async api(endpoint, options = {}) {
 ```
 
 ### Five Views (all in `index.html`, toggled via `display: none/block`)
-1. `#view-auth` — Login + Register + 1-Click Demo Switchers
-2. `#view-dashboard` — Stat cards + Recent Docs + Collections
-3. `#view-references` — Filter bar + Reference list + Add/Edit/Delete actions
-4. `#view-collections` — Collection cards + Create/Rename/Delete
-5. `#view-editor` — Split pane (paper canvas left, bibliography + picker right)
-6. `#view-admin` — Metrics + Users table + Audit log table
+1. `#view-auth` - Login + Register + 1-Click Demo Switchers
+2. `#view-dashboard` - Stat cards + Recent Docs + Collections
+3. `#view-references` - Filter bar + Reference list + Add/Edit/Delete actions
+4. `#view-collections` - Collection cards + Create/Rename/Delete
+5. `#view-editor` - Split pane (paper canvas left, bibliography + picker right)
+6. `#view-admin` - Metrics + Users table + Audit log table
 
 ### Six Modals (all in `index.html`)
-1. `#modal-reference` — Add/Edit Reference with dynamic type-specific fields
-2. `#modal-cascade-delete` — Delete confirmation with citing documents warning
-3. `#modal-collection` — Create/Rename Collection
-4. `#modal-assign-collection` — Checkbox assignment of reference to collections
-5. `#modal-export` — Format (PDF/TXT) + Scope (Full/Bibliography) selection
-6. `#modal-admin-role` — Admin role change selector
+1. `#modal-reference` - Add/Edit Reference with dynamic type-specific fields
+2. `#modal-cascade-delete` - Delete confirmation with citing documents warning
+3. `#modal-collection` - Create/Rename Collection
+4. `#modal-assign-collection` - Checkbox assignment of reference to collections
+5. `#modal-export` - Format (PDF/TXT) + Scope (Full/Bibliography) selection
+6. `#modal-admin-role` - Admin role change selector
 
 ### Design System (`app.css`)
 - **Color palette**: HSL-based dark slate (`--bg-main: #0B0F19`, `--primary: #6366F1` indigo)
@@ -1066,8 +1066,8 @@ Triggered automatically on first run. Re-triggerable via `POST /api/auth/reset-d
 | `AC-07` | Same reference cited multiple times → single deduplicated bibliography entry |
 | `NFR-004` | Every protected operation must verify the active session before executing |
 | `NFR-005` | Passwords stored with a secure hash algorithm (PBKDF2-SHA256) |
-| `NFR-018` | Strict data isolation — users never see each other's data |
-| `NFR-019` | Audit log is immutable — no modifications permitted |
+| `NFR-018` | Strict data isolation - users never see each other's data |
+| `NFR-019` | Audit log is immutable - no modifications permitted |
 
 ---
 
@@ -1092,7 +1092,7 @@ python -m venv .venv
 # or
 .\.venv\Scripts\activate.bat          # CMD
 
-# 4. Install dependencies (into .venv only — workspace policy)
+# 4. Install dependencies (into .venv only - workspace policy)
 .\.venv\Scripts\pip.exe install -r requirements.txt
 
 # 5. Run the application
@@ -1110,7 +1110,7 @@ Open **`http://127.0.0.1:8000/`** in any browser.
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
-Database persists across restarts — no data is lost.
+Database persists across restarts - no data is lost.
 
 ### Resetting Demo Data
 Click **"🔄 Reset Demo Data"** in the navbar, or:

@@ -425,12 +425,16 @@ class CiteNestApp {
       ).join('') : '';
 
       const stateBadge = `<span class="badge ${this.getRefBadgeClass(ref.lifecycleState)}">${ref.lifecycleState}</span>`;
+      const sourceBadge = ref.referenceSource === 'CENTRAL' 
+        ? `<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; font-weight: 500;">🏛️ Central Catalog</span>`
+        : `<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: 500;">👤 Personal Library</span>`;
 
       return `
         <div class="reference-item">
           <div class="ref-main">
             <div class="ref-top">
               <span class="badge" style="background: var(--bg-surface-elevated);">${icon} ${ref.type}</span>
+              ${sourceBadge}
               ${stateBadge}
               <span style="font-size: 0.8rem; color: var(--text-dim); font-family: var(--font-mono);">${ref.referenceId}</span>
               ${collectionBadges}
@@ -953,12 +957,21 @@ class CiteNestApp {
       return;
     }
 
-    container.innerHTML = filtered.map(r => `
-      <div class="ref-picker-item" onclick="appState.insertCitationFromPicker('${r.referenceId}')">
-        <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-main);">${this.escape(r.title)}</div>
-        <div style="font-size: 0.75rem; color: var(--text-muted);">${this.escape(r.authors || r.siteName || '')} (${r.year || 'n.d.'})</div>
-      </div>
-    `).join('');
+    container.innerHTML = filtered.map(r => {
+      const srcTag = r.referenceSource === 'CENTRAL'
+        ? '<span style="font-size: 0.7rem; color: #818cf8; background: rgba(99, 102, 241, 0.15); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">🏛️ Central</span>'
+        : '<span style="font-size: 0.7rem; color: #34d399; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">👤 Personal</span>';
+
+      return `
+        <div class="ref-picker-item" onclick="appState.insertCitationFromPicker('${r.referenceId}')">
+          <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>${this.escape(r.title)}</span>
+            ${srcTag}
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">${this.escape(r.authors || r.siteName || '')} (${r.year || 'n.d.'})</div>
+        </div>
+      `;
+    }).join('');
   }
 
   filterPickerReferences() {

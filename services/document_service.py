@@ -10,12 +10,41 @@ import json
 import re
 from typing import List, Dict, Any, Optional, Tuple
 from database import get_db
-from models import DocumentLifecycleState, CitationStyle, ReferenceLifecycleState
+from models import DocumentLifecycleState, CitationStyle, ReferenceLifecycleState, ReferenceSource
 from formatters import CitationEngine
+from services.personal_reference_service import PersonalReferenceService
 
 
 class DocumentService:
     """Implements IDocument and IBibliography interfaces."""
+
+    @staticmethod
+    def _resolve_reference(owner_id: str, reference_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Resolves reference metadata from Personal DB or Central DB.
+        Verifies access for authenticated owner_id.
+        """
+        from services.personal_reference_service import PersonalReferenceService
+        # 1. Check personal database
+        pref = PersonalReferenceService.get_reference_by_id(owner_id, reference_id)
+        if pref:
+            pref["referenceSource"] = ReferenceSource.PERSONAL.value
+            return pref
+
+        # 2. Check central database (isShared=1 or ownerId=owner_id)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM references_tab
+                WHERE referenceId = ? AND (isShared = 1 OR ownerId = ?);
+            """, (reference_id, owner_id))
+            row = cursor.fetchone()
+            if row:
+                cdata = dict(row)
+                cdata["referenceSource"] = ReferenceSource.CENTRAL.value
+                return cdata
+
+        return None
 
     @staticmethod
     def get_user_documents(owner_id: str) -> List[Dict[str, Any]]:
@@ -45,14 +74,28 @@ class DocumentService:
 
             doc_dict = dict(doc)
 
-            # Fetch citations
-            cursor.execute("""
-                SELECT c.*, r.title AS refTitle, r.authors AS refAuthors, r.year AS refYear, r.type AS refType
-                FROM citations c
-                JOIN references_tab r ON c.referenceId = r.referenceId
-                WHERE c.documentId = ?;
-            """, (document_id,))
-            doc_dict["citations"] = [dict(r) for r in cursor.fetchall()]
+            # Fetch citations and resolve reference metadata across Central and Personal databases
+            cursor.execute("SELECT * FROM citations WHERE documentId = ?;", (document_id,))
+            raw_citations = [dict(r) for r in cursor.fetchall()]
+
+            resolved_cits = []
+            for c in raw_citations:
+                ref_meta = DocumentService._resolve_reference(owner_id, c["referenceId"])
+                if ref_meta:
+                    c["refTitle"] = ref_meta.get("title")
+                    c["refAuthors"] = ref_meta.get("authors")
+                    c["refYear"] = ref_meta.get("year")
+                    c["refType"] = ref_meta.get("type")
+                    c["referenceSource"] = ref_meta.get("referenceSource", ReferenceSource.CENTRAL.value)
+                else:
+                    c["refTitle"] = "Unknown Reference"
+                    c["refAuthors"] = ""
+                    c["refYear"] = ""
+                    c["refType"] = ""
+                    c["referenceSource"] = "UNKNOWN"
+                resolved_cits.append(c)
+
+            doc_dict["citations"] = resolved_cits
 
             # Fetch bibliography
             cursor.execute("SELECT entries, isStale FROM bibliographies WHERE documentId = ?;", (document_id,))
@@ -224,10 +267,10 @@ class DocumentService:
             if not doc:
                 return False, "Document not found or access denied.", None
 
-            cursor.execute("SELECT * FROM references_tab WHERE referenceId = ? AND ownerId = ?;", (reference_id, owner_id))
-            ref = cursor.fetchone()
-            if not ref:
-                return False, "Reference not found in your library.", None
+            # Resolve reference across Personal DB and Central DB (Requirement 6)
+            ref_dict = DocumentService._resolve_reference(owner_id, reference_id)
+            if not ref_dict:
+                return False, "Reference not found in your library or shared catalog.", None
 
             # Generate citationId (e.g. CT41)
             cursor.execute("SELECT citationId FROM citations WHERE citationId LIKE 'CT%' ORDER BY LENGTH(citationId) DESC, citationId DESC LIMIT 1;")
@@ -244,7 +287,7 @@ class DocumentService:
             # Compute preliminary in-text text
             style = doc["citationStyle"]
             formatter = CitationEngine.get_formatter(style)
-            in_text_text = formatter.format_in_text(dict(ref), {"ieee_index": 1})
+            in_text_text = formatter.format_in_text(ref_dict, {"ieee_index": 1})
 
             # Insert into citations table
             cursor.execute("""
@@ -252,10 +295,11 @@ class DocumentService:
                 VALUES (?, ?, ?, ?);
             """, (citation_id, document_id, reference_id, in_text_text))
 
-            # Mark reference as Cited
-            cursor.execute("""
-                UPDATE references_tab SET lifecycleState = ? WHERE referenceId = ?;
-            """, (ReferenceLifecycleState.CITED.value, reference_id))
+            # Mark reference as Cited if it is stored in central references_tab
+            if ref_dict.get("referenceSource") == ReferenceSource.CENTRAL.value:
+                cursor.execute("""
+                    UPDATE references_tab SET lifecycleState = ? WHERE referenceId = ?;
+                """, (ReferenceLifecycleState.CITED.value, reference_id))
 
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -439,11 +483,10 @@ class DocumentService:
             all_ref_ids = list(dict.fromkeys(cited_ref_ids + db_ref_ids))
 
             refs_by_id: Dict[str, Dict[str, Any]] = {}
-            if all_ref_ids:
-                placeholders = ",".join(["?"] * len(all_ref_ids))
-                cursor.execute(f"SELECT * FROM references_tab WHERE referenceId IN ({placeholders});", all_ref_ids)
-                for r in cursor.fetchall():
-                    refs_by_id[r["referenceId"]] = dict(r)
+            for rid in all_ref_ids:
+                ref_meta = DocumentService._resolve_reference(owner_id, rid)
+                if ref_meta:
+                    refs_by_id[rid] = ref_meta
 
             # Assign IEEE indices in order of appearance of unique references
             ieee_index_by_ref: Dict[str, int] = {}

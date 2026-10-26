@@ -27,6 +27,12 @@ class ReferenceType(str, Enum):
     WEBSITE = "Website"
 
 
+class ReferenceSource(str, Enum):
+    """Identifies which database a reference lives in."""
+    CENTRAL = "CENTRAL"    # Shared catalog inside citenest.db (isShared=1)
+    PERSONAL = "PERSONAL"  # User's personal SQLite DB (user_databases/<userId>.db)
+
+
 class ReferenceLifecycleState(str, Enum):
     ENTERING = "Entering"
     VALIDATING = "Validating"
@@ -106,6 +112,7 @@ class Collection(BaseModel):
 class CollectionMembership(BaseModel):
     membershipId: str
     collectionId: str
+    referenceSource: str = "CENTRAL"   # "CENTRAL" or "PERSONAL"
     referenceId: str
 
 

@@ -18,17 +18,28 @@ class AdminService:
         with get_db() as conn:
             cursor = conn.cursor()
 
-            # Reference counts
-            cursor.execute("SELECT COUNT(*) FROM references_tab WHERE ownerId = ?;", (user_id,))
+            # Reference counts: combine Central shared references and Personal DB references
+            cursor.execute("SELECT COUNT(*) FROM references_tab WHERE (isShared = 1 OR ownerId = ?);", (user_id,))
             total_refs = cursor.fetchone()[0]
 
             cursor.execute("""
                 SELECT type, COUNT(*) as count
                 FROM references_tab
-                WHERE ownerId = ?
+                WHERE (isShared = 1 OR ownerId = ?)
                 GROUP BY type;
             """, (user_id,))
             type_counts = {r["type"]: r["count"] for r in cursor.fetchall()}
+
+            # Add personal references from user's isolated database
+            try:
+                from services.personal_reference_service import PersonalReferenceService
+                personal_refs = PersonalReferenceService.get_references(user_id)
+                total_refs += len(personal_refs)
+                for pr in personal_refs:
+                    ptype = pr.get("type", "Journal Article")
+                    type_counts[ptype] = type_counts.get(ptype, 0) + 1
+            except Exception:
+                pass
 
             # Collection counts
             cursor.execute("SELECT COUNT(*) FROM collections WHERE ownerId = ?;", (user_id,))
