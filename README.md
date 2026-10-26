@@ -70,4 +70,3 @@ The login screen includes 1-click login buttons for instant testing:
 | **Researcher/Faculty** | Earth Agarwal | `earth@lnmiit.ac.in` | `password123` |
 | **Administrator** | Adeshwar Singh | `admin@lnmiit.ac.in` | `admin123` |
 
-Click the **"🔄 Reset Demo Data"** button at any time to restore the initial Lab 4 Object Diagram and Annex F state.
